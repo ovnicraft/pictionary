@@ -2,13 +2,39 @@ import React, { useRef, useEffect, useState } from 'react';
 
 interface DrawingCanvasProps {
     websocket: WebSocket | null;
+    canDraw: boolean;
 }
 
-const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ websocket }) => {
+const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ websocket, canDraw }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [color, setColor] = useState('#000000');
     const [thickness, setThickness] = useState(5);
+
+    // Predefined color palette
+    const colorPalette = [
+        '#000000', // Black
+        '#FF0000', // Red
+        '#00FF00', // Green
+        '#0000FF', // Blue
+        '#FFFF00', // Yellow
+        '#FF00FF', // Magenta
+        '#00FFFF', // Cyan
+        '#FFA500', // Orange
+        '#800080', // Purple
+        '#FFC0CB', // Pink
+        '#A52A2A', // Brown
+        '#808080', // Gray
+    ];
+
+    // Brush size options
+    const brushSizes = [
+        { size: 2, label: 'XS' },
+        { size: 5, label: 'S' },
+        { size: 10, label: 'M' },
+        { size: 15, label: 'L' },
+        { size: 20, label: 'XL' },
+    ];
 
     const getContext = () => {
         const canvas = canvasRef.current;
@@ -25,8 +51,9 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ websocket }) => {
         if (websocket) {
             websocket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                if (data.type === 'draw') {
-                    const { x0, y0, x1, y1, color, thickness } = data.payload;
+                if (data.type === 'draw' || data.type === 'drawing_data') {
+                    const payload = data.type === 'drawing_data' ? data.payload : data.payload;
+                    const { x0, y0, x1, y1, color, thickness } = payload;
                     const ctx = getContext();
                     if (ctx) {
                         ctx.beginPath();
@@ -45,6 +72,8 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ websocket }) => {
     }, [websocket]);
 
     const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (!canDraw) return;
+        
         const ctx = getContext();
         if (!ctx) return;
 
@@ -70,7 +99,7 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ websocket }) => {
     };
 
     const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (!isDrawing) return;
+        if (!isDrawing || !canDraw) return;
         const ctx = getContext();
         if (!ctx) return;
 
@@ -114,6 +143,7 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ websocket }) => {
     };
 
     const clearCanvas = () => {
+        if (!canDraw) return;
         clearCanvasLocal();
         if (websocket?.readyState === WebSocket.OPEN) {
             websocket.send(JSON.stringify({ type: 'clear' }));
@@ -121,39 +151,100 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({ websocket }) => {
     };
 
     return (
-        <div className="flex flex-col items-center w-full h-full">
-            <canvas
-                ref={canvasRef}
-                width={800}
-                height={600}
-                className="border border-gray-400 rounded-lg bg-white"
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={stopDrawing}
-                onMouseOut={stopDrawing}
-            />
-            <div className="mt-4 flex items-center space-x-4">
-                <input
-                    type="color"
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    className="w-10 h-10 p-1 border rounded"
+        <div className="flex flex-col items-center w-full h-full p-4">
+            <div className="relative">
+                <canvas
+                    ref={canvasRef}
+                    width={800}
+                    height={500}
+                    className={`border-2 border-gray-400 rounded-lg bg-white ${!canDraw ? 'cursor-not-allowed' : 'cursor-crosshair'}`}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseOut={stopDrawing}
                 />
-                <input
-                    type="range"
-                    min="1"
-                    max="20"
-                    value={thickness}
-                    onChange={(e) => setThickness(Number(e.target.value))}
-                    className="w-40"
-                />
-                <button
-                    onClick={clearCanvas}
-                    className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                >
-                    Clear Canvas
-                </button>
+                {!canDraw && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-10 rounded-lg">
+                        <p className="text-gray-600 font-semibold">Waiting for your turn to draw...</p>
+                    </div>
+                )}
             </div>
+            
+            {canDraw && (
+                <div className="mt-4 space-y-3">
+                    {/* Color Palette */}
+                    <div className="flex items-center space-x-2">
+                        <span className="text-sm font-semibold text-gray-700">Colors:</span>
+                        <div className="flex space-x-1">
+                            {colorPalette.map((paletteColor) => (
+                                <button
+                                    key={paletteColor}
+                                    onClick={() => setColor(paletteColor)}
+                                    className={`w-8 h-8 rounded border-2 transition-all ${
+                                        color === paletteColor 
+                                            ? 'border-gray-800 scale-110 shadow-md' 
+                                            : 'border-gray-300 hover:border-gray-500'
+                                    }`}
+                                    style={{ backgroundColor: paletteColor }}
+                                    title={paletteColor}
+                                />
+                            ))}
+                            {/* Custom color picker */}
+                            <input
+                                type="color"
+                                value={color}
+                                onChange={(e) => setColor(e.target.value)}
+                                className="w-8 h-8 rounded border-2 border-gray-300 cursor-pointer"
+                                title="Custom color"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Brush Size */}
+                    <div className="flex items-center space-x-2">
+                        <span className="text-sm font-semibold text-gray-700">Brush:</span>
+                        <div className="flex space-x-2">
+                            {brushSizes.map((brush) => (
+                                <button
+                                    key={brush.size}
+                                    onClick={() => setThickness(brush.size)}
+                                    className={`px-3 py-1 rounded border-2 transition-all ${
+                                        thickness === brush.size
+                                            ? 'border-blue-500 bg-blue-100 text-blue-700'
+                                            : 'border-gray-300 hover:border-gray-500'
+                                    }`}
+                                >
+                                    {brush.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex items-center space-x-2 ml-4">
+                            <input
+                                type="range"
+                                min="1"
+                                max="30"
+                                value={thickness}
+                                onChange={(e) => setThickness(Number(e.target.value))}
+                                className="w-32"
+                            />
+                            <span className="text-sm text-gray-600 w-8">{thickness}px</span>
+                        </div>
+                    </div>
+
+                    {/* Clear Button */}
+                    <div className="flex items-center space-x-2">
+                        <button
+                            onClick={clearCanvas}
+                            className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                        >
+                            Clear Canvas
+                        </button>
+                        <span className="text-xs text-gray-500">
+                            Tip: Draw something for others to guess!
+                        </span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

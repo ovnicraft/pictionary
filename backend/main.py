@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 import json
+import asyncio
 from typing import List
 
 from .game_state import GameStateManager
@@ -25,6 +26,20 @@ app.add_middleware(
 )
 
 game_manager = GameStateManager()
+time_update_task = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the time update task when the server starts"""
+    global time_update_task
+    time_update_task = asyncio.create_task(game_manager.send_time_updates())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cancel the time update task when the server shuts down"""
+    global time_update_task
+    if time_update_task:
+        time_update_task.cancel()
 
 @app.get("/")
 def read_root():
@@ -36,6 +51,12 @@ async def websocket_endpoint(websocket: WebSocket, player_name: str):
     game_manager.add_player(player_id, player_name, websocket)
 
     try:
+        # Send player their ID
+        await websocket.send_json({
+            "type": "player_info",
+            "payload": {"player_id": player_id}
+        })
+        
         # Send current game state to the new player
         initial_state = game_manager.get_game_state_for_player(player_id)
         await websocket.send_json({"type": "game_state", "payload": initial_state})
@@ -55,41 +76,52 @@ async def websocket_endpoint(websocket: WebSocket, player_name: str):
             message = json.loads(data)
             
             if message["type"] == "start_game":
-                round_info = game_manager.start_round()
+                round_info = await game_manager.start_round()
                 if round_info:
                     # Send the word to the drawer
                     drawer_id = round_info["drawer_id"]
-                    drawer_ws = game_manager.game_state.players[drawer_id].ws
-                    await drawer_ws.send_json({
-                        "type": "word_to_draw",
-                        "payload": {"word": round_info["word_to_draw"]}
-                    })
+                    if drawer_id in game_manager.game_state.players:
+                        drawer_ws = game_manager.game_state.players[drawer_id].ws
+                        await drawer_ws.send_json({
+                            "type": "word_to_draw",
+                            "payload": {"word": round_info["word_to_draw"]}
+                        })
 
-                    # Send round start to everyone else
+                    # Send round start to everyone
                     await game_manager.broadcast({
                         "type": "round_start",
-                        "payload": {"drawer_id": drawer_id}
-                    }, exclude_player_id=drawer_id)
-
+                        "payload": {
+                            "drawer_id": drawer_id,
+                            "round_number": round_info["round_number"]
+                        }
+                    })
 
             elif message["type"] == "draw":
-                drawing_data = game_manager.receive_drawing_data(message["payload"])
-                await game_manager.broadcast(drawing_data, exclude_player_id=player_id)
+                # Only allow drawing from the current drawer
+                if player_id == game_manager.game_state.current_drawer_id:
+                    drawing_data = game_manager.receive_drawing_data(message["payload"])
+                    await game_manager.broadcast(drawing_data, exclude_player_id=player_id)
+
+            elif message["type"] == "clear":
+                # Only allow clearing from the current drawer
+                if player_id == game_manager.game_state.current_drawer_id:
+                    await game_manager.broadcast({"type": "clear"}, exclude_player_id=player_id)
 
             elif message["type"] == "guess":
                 guess = message["payload"]["message"]
                 if game_manager.receive_guess(player_id, guess):
                     # Guess was correct
+                    player = game_manager.game_state.players[player_id]
                     await game_manager.broadcast({
                         "type": "correct_guess",
                         "payload": {
                             "player_id": player_id,
-                            "player_name": game_manager.game_state.players[player_id].name
+                            "player_name": player.name,
+                            "score": player.score
                         }
                     })
-                    # Potentially start a new round here or end the game
                 else:
-                    # Incorrect guess, broadcast chat message
+                    # Incorrect guess, broadcast as chat message
                     await game_manager.broadcast({
                         "type": "chat_message",
                         "payload": {
@@ -105,3 +137,6 @@ async def websocket_endpoint(websocket: WebSocket, player_name: str):
             "type": "player_leave", 
             "payload": {"player_id": player_id}
         })
+    except Exception as e:
+        print(f"Error in websocket connection: {e}")
+        game_manager.remove_player(player_id)

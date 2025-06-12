@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface JoinGameProps {
     onJoin: (username: string) => void;
@@ -6,6 +6,12 @@ interface JoinGameProps {
 
 const JoinGame: React.FC<JoinGameProps> = ({ onJoin }) => {
     const [username, setUsername] = useState('');
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        // Auto-focus the input when component mounts
+        inputRef.current?.focus();
+    }, []);
 
     const handleJoin = () => {
         if (username.trim()) {
@@ -18,6 +24,7 @@ const JoinGame: React.FC<JoinGameProps> = ({ onJoin }) => {
             <div className="w-full max-w-sm p-8 bg-[#1a1a1a] rounded-lg shadow-md text-white">
                 <h1 className="mb-6 text-3xl font-bold text-center">Join Pictionary</h1>
                 <input
+                    ref={inputRef}
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
