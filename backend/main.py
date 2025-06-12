@@ -5,7 +5,7 @@ import os
 import json
 from typing import List
 
-from .game_state import GameStateManager
+from game_state import GameStateManager
 
 load_dotenv()
 
