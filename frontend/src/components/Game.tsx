@@ -9,7 +9,8 @@ const Game = () => {
 
     useEffect(() => {
         if (isJoined && username) {
-            websocket.current = new WebSocket(`ws://localhost:8000/ws/${username}`);
+            const wsUrl = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8000';
+            websocket.current = new WebSocket(`${wsUrl}/ws/${username}`);
 
             websocket.current.onopen = () => {
                 console.log('WebSocket connected');
