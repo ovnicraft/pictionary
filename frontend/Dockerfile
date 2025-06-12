@@ -14,16 +14,10 @@ RUN npm install
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN npm install
 
-# Stage 2: Serve the application
-FROM nginx:stable-alpine
 
-# Copy the build output from the build stage
-COPY --from=build /app/dist /usr/share/nginx/html
-
-# Expose port 80
-EXPOSE 80
+EXPOSE 5173
 
 # Start Nginx
-CMD ["nginx", "-g", "daemon off;"] 
+CMD ["npm", "run", "dev"] 

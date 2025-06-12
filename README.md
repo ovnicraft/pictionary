@@ -6,11 +6,6 @@ This is a simple real-time Pictionary game built with FastAPI and React.
 
 The easiest way to run the application is using Docker and Docker Compose.
 
-### Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
-
 ### Instructions
 
 1.  Clone the repository:
