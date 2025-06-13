@@ -66,9 +66,13 @@ async def websocket_endpoint(websocket: WebSocket, player_name: str):
                     })
 
                     # Send round start to everyone else
+                    word_hint = "".join(["_ " for _ in round_info["word_to_draw"]]).strip()
                     await game_manager.broadcast({
                         "type": "round_start",
-                        "payload": {"drawer_id": drawer_id}
+                        "payload": {
+                            "drawer_id": drawer_id,
+                            "word_hint": word_hint
+                        }
                     }, exclude_player_id=drawer_id)
 
 
